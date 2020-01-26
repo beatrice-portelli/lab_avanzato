@@ -99,7 +99,8 @@ def evaluate(args, eval_dataset, model, tokenizer, prefix="", kind="dev"):
     results.update(result)
     
     
-    outdir = args.output_dir if (prefix == "" or kind != "dev") else args.output_dir+"/checkpoint-"+prefix
+    outdir = 
+    if (prefix == "" or kind != "dev") else args.output_dir+"/checkpoint-"+prefix
     
     # add_predictions_to_input(args, preds, outdir, args.data_dir, eval_task)
     
@@ -111,6 +112,39 @@ def evaluate(args, eval_dataset, model, tokenizer, prefix="", kind="dev"):
             writer.write("%s = %s\n" % (key, str(result[key])))
     """
     return results
+    
+def get_embeddings(args, model, dataset, kind):
+    sampler = SequentialSampler(dataset)
+    dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size)
+    model.eval()
+    
+    all_embeddings = None
+    
+    for batch in tqdm(dataloader, desc="Extracting features from BERT"):
+        batch = tuple(t.to(args.device) for t in batch)
+
+        with torch.no_grad():
+
+
+            inputs = {'input_ids':      batch[0],
+                      'attention_mask': batch[1],
+                      'token_type_ids': batch[2],
+                      'labels':         batch[3] }
+
+            outputs = model(**inputs)
+            hidden_layers = outputs[2]
+            if kind not in ["mean3", "mean5"]:
+                lvl = int(kind)
+                embeddings = hidden_layers[-lvl]
+                embeddings = embeddings.view(embeddings.shape[0], -1) 
+            
+            if all_embeddings is None:
+                all_embeddings = embeddings
+            else:
+                all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
+    
+    return all_embeddings
+    
     
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -202,7 +236,7 @@ class Args():
         self.seed = 42
         self.output_dir = "./output_seed_42"
         
-        self.do_train = False
+        self.do_train = True
         self.do_eval = True
         self.do_results = True
         self.overwrite_output_dir = False
