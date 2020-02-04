@@ -136,12 +136,29 @@ def get_embeddings(args, model, dataset, kind):
             if kind not in ["mean3", "mean5"]:
                 lvl = int(kind)
                 embeddings = hidden_layers[-lvl]
-                embeddings = embeddings.view(embeddings.shape[0], -1) 
+                
+                
+            elif kind == "mean5":
+                embeddings = hidden_layers[-5:]
+                embeddings_sum = embeddings[0]#.detach().cpu()
+                for e in embeddings[1:]:
+                    embeddings_sum += e#.detach().cpu()
+                embeddings = embeddings_sum / 5.0
+                
+            elif kind == "mean3":
+                embeddings = hidden_layers[-3:]
+                embeddings_sum = embeddings[0]#.detach().cpu()
+                for e in embeddings[1:]:
+                    embeddings_sum += e#.detach().cpu()
+                embeddings = embeddings_sum / 3.0
+            
+            embeddings = embeddings.view(embeddings.shape[0], -1) 
             
             if all_embeddings is None:
-                all_embeddings = embeddings
+                all_embeddings = embeddings.detach().cpu()
             else:
-                all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
+                all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
+            #all_embeddings = all_embeddings.detach().cpu()
     
     return all_embeddings
     

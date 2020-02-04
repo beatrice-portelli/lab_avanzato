@@ -27,28 +27,29 @@ from pytorch_transformers import (
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--small", action="store_true", help="test on a smaller dataset")
-parser.add_argument("--folds_number", type=int, default=10, help="number of folds for stratified k fold")
+parser.add_argument("--n_folds", type=int, default=10, help="number of folds for stratified k fold")
 parser.add_argument("--finetune_bert", action="store_true", help="fine-tune bert for 4 epochs before using it to generate features for the other models")
 parser.add_argument("--train", action="store_true")
 parser.add_argument("--test", action="store_true")
-parser.add_argument("--compute_metrics", action="store_true")
+parser.add_argument("--results", action="store_true")
 parser.add_argument("--cuda", action="store_true")
 parser.add_argument("--overwrite", action="store_true")
 parser.add_argument("--out_dir", default="combined_models")
+parser.add_argument("--embedding_lvl", type=str, default="1")
 
 
 
 line_args = parser.parse_args()
 
 small = line_args.small
-small_size = 100
+small_size = 10000
 
-folds_number = line_args.folds_number
+folds_number = line_args.n_folds
 
 args = Args()
 args.do_train = line_args.train
 args.do_eval = line_args.test
-args.do_results = line_args.compute_metrics
+args.do_results = line_args.results
 args.use_cuda = line_args.cuda
 aggregation_level = "Chapter"
 # aggregation_level = "Block"
@@ -312,13 +313,14 @@ if args.do_train:
 
             if not os.path.exists(model_output_dir):
                 os.makedirs(model_output_dir)
+            
+            if line_args.finetune_bert:
+                model_to_save = model.module if hasattr(model, 'module') else model
+                model_to_save.save_pretrained(model_output_dir)
+                torch.save(args, os.path.join(model_output_dir, 'training_args.bin'))
+                tokenizer.save_pretrained(model_output_dir)
 
-            model_to_save = model.module if hasattr(model, 'module') else model
-            model_to_save.save_pretrained(model_output_dir)
-            torch.save(args, os.path.join(model_output_dir, 'training_args.bin'))
-            tokenizer.save_pretrained(model_output_dir)
-
-            print("Model serialized at path: {}".format(model_output_dir))
+                print("Model serialized at path: {}".format(model_output_dir))
 
             if not os.path.exists(data_serialized):
                 with open(data_serialized, "wb") as output_file:
@@ -328,14 +330,14 @@ if args.do_train:
         if os.path.exists(model_output_dir+"/logistic_regression.bin") and not line_args.overwrite:
             print("  LOGISTIC REGRESSION ALREADY TRAINED, moving on")
         else:
-            all_embeddings = get_embeddings(args, model, train_dataset, "1")
+            all_embeddings = get_embeddings(args, model, train_dataset, line_args.embedding_lvl)
 
             ml_train_data = np.asarray(all_embeddings.cpu())
 
             print(ml_train_data.shape)
             print(len(training_labels))
 
-            ml_model = LogisticRegression()
+            ml_model = LogisticRegression(solver="lbfgs", multi_class="auto")
             ml_model.fit(ml_train_data, training_labels)
 
             torch.save(ml_model, model_output_dir+"/logistic_regression.bin")
@@ -366,8 +368,13 @@ if args.do_eval:
 
         if not os.path.exists(data_serialized): break
 
-        model = model_class.from_pretrained(model_output_dir)
-        tokenizer = tokenizer_class.from_pretrained(model_output_dir, do_lower_case=args.do_lower_case)
+        if line_args.finetune_bert:
+            model = model_class.from_pretrained(model_output_dir)
+            tokenizer = tokenizer_class.from_pretrained(model_output_dir, do_lower_case=args.do_lower_case)
+        else:
+            model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
+            tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, do_lower_case=args.do_lower_case)
+
         model.to(args.device)
 
         with open(data_serialized, "rb") as input_file:
@@ -389,18 +396,18 @@ if args.do_eval:
 
         # prediction, all_predictions = evaluate(args, test_dataset, model, tokenizer)
         
-        all_embeddings = get_embeddings(args, model, test_dataset, "1")
+        all_embeddings = get_embeddings(args, model, test_dataset, line_args.embedding_lvl)
 
         ml_test_data = np.asarray(all_embeddings.cpu())
 
-        print(ml_test_data.shape)
-        print(len(test_labels))
+        # print(ml_test_data.shape)
+        # print(len(test_labels))
 
         ml_model = torch.load(model_output_dir+"/logistic_regression.bin")
         prediction = ml_model.predict(ml_test_data)
         
-        print(prediction)
-        print(test_labels)
+        # print(prediction)
+        # print(test_labels)
 
         # Some serialization and things
 
@@ -459,3 +466,4 @@ if args.do_results:
     
 results_df = pd.read_pickle(evaluation_path)
 print(results_df)
+print(results_df.mean(axis=0))

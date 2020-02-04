@@ -26,10 +26,13 @@ from pytorch_transformers import (
 small = False
 
 folds_number = 10
+stop_after = 2
 
 args = Args()
 # aggregation_level = "Chapter"
-aggregation_level = "Block"
+# aggregation_level = "Block"
+# aggregation_level = "Category"
+aggregation_level = "Leaf"
 
 main_dir = "/mnt/HDD/bportelli/lab_avanzato"
 
@@ -230,6 +233,11 @@ if args.do_train:
     print("Training")
 
     for training_indexes, test_indexes in sk_fold.split(X=np.zeros(len(codes)), y=codes):
+    
+        if fold_counter > stop_after:
+            print("Stopping before fold: {}".format(fold_counter))
+            break
+    
         print("Processing fold: {}".format(fold_counter))
         data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
         
