@@ -12,6 +12,9 @@ import random
 import os
 import glob
 
+import argparse
+
+
 from utils import (InputExample, InputFeatures, _truncate_seq_pair, Args,
                       convert_examples_to_features, load_and_cache_examples, train, evaluate)
 
@@ -21,25 +24,49 @@ from pytorch_transformers import (
     BertTokenizer
 )
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--n_folds", type=int, default=10, help="number of folds for stratified k fold (default 10)")
+parser.add_argument("--stop_at", type=int, default=10, help="number of folds to actually compute (default 10)")
+parser.add_argument("--train", action="store_true", help="perform training")
+parser.add_argument("--test", action="store_true", help="perform testing (requires training data)")
+parser.add_argument("--results", action="store_true", help="compute metrics (requires testing data)")
+parser.add_argument("--nocuda", action="store_true", help="run all code on cpu")
+parser.add_argument("--out_dir", default="BERT_models", help="set root directory for all results (default ./BERT_models)")
+parser.add_argument("--level", default="Chapter", choices=["Chapter", "Block", "Category", "Leaf"], help="choose aggregation level for data (default Chapter)")
+parser.add_argument("--overwrite", action="store_true", help="ignore existing data and overwrite everything with no additional warning")
+parser.add_argument("--small", action="store_true", help="test on a smaller dataset (first 1000 samples)")
+
+
+line_args = parser.parse_args()
+if line_args.stop_at < line_args.n_folds:
+    print("*****************\n\n\tWARNING:\n\n\tthe code is going to run on {} out of {} folds!\n\n*****************".format(
+    line_args.stop_at, line_args.n_folds))
+
+small = line_args.small
 # All important paths and constants
 
-small = False
 
-folds_number = 10
-stop_after = 2
+folds_number = line_args.n_folds
+stop_after = line_args.stop_at
 
 args = Args()
+args.do_train = line_args.train
+args.do_eval = line_args.test
+args.do_results = line_args.results
+args.use_cuda = not line_args.nocuda
+args.small = line_args.small
 # aggregation_level = "Chapter"
 # aggregation_level = "Block"
 # aggregation_level = "Category"
-aggregation_level = "Leaf"
+# aggregation_level = "Leaf"
+aggregation_level = line_args.level
 
 main_dir = "/mnt/HDD/bportelli/lab_avanzato"
 
 original_data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
 
 diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format("_small" if small else "")
-models_path = main_dir+"/models/"
+models_path = main_dir+"/"+line_args.out_dir+"/"
 model_name = args.model_name_or_path + "_small" if small else args.model_name_or_path
 model_directory = "{}{}/{}/".format(models_path, model_name, aggregation_level)
 model_directory_estimators = "{}{}/{}/Estimators/".format(models_path, model_name, aggregation_level)
@@ -96,7 +123,7 @@ df_chapter_freq = compute_relative_frequency(diagnosis_df_annotated, "Chapter")
 print("Relative/Absolute frequencies for Chapters")
 df_chapter_freq
 
-if os.path.exists(diagnosis_df_preprocessed_serialized):
+if os.path.exists(diagnosis_df_preprocessed_serialized) and not line_args.overwrite:
     diagnosis_df_annotated = pd.read_pickle(diagnosis_df_preprocessed_serialized)
     print("Length before: {}".format(len(diagnosis_df_annotated)))
     print("Dataframe preprocessed loaded from path: {}".format(diagnosis_df_preprocessed_serialized))
@@ -130,7 +157,7 @@ else:
             diagnosis_df_annotated.drop(diagnosis_df_annotated[diagnosis_df_annotated[aggregation_level] == code].index,inplace=True)
     
     if small:
-        diagnosis_df_annotated = diagnosis_df_annotated.iloc[:10,]
+        diagnosis_df_annotated = diagnosis_df_annotated.iloc[:100,]
     
     print("Length after: {}".format(len(diagnosis_df_annotated)))
 
@@ -146,7 +173,7 @@ config_class, model_class, tokenizer_class = BertConfig, BertForSequenceClassifi
 config = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path, num_labels=num_labels)
 tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, do_lower_case=args.do_lower_case)
 
-if os.path.exists(all_features_path):
+if os.path.exists(all_features_path) and not line_args.overwrite:
     with open(all_features_path, "rb") as o:
         features = pickle.load(o)
     print("All features loaded from path: {}".format(all_features_path))
@@ -175,7 +202,7 @@ else:
 for i in range(3):
     print(features[i])
 
-if os.path.exists(all_label_codes_path):
+if os.path.exists(all_label_codes_path) and not line_args.overwrite:
     with open(all_label_codes_path, "rb") as o:
         all_label_codes = pickle.load(o)
     with open(label_map_path, "rb") as o:
@@ -243,7 +270,7 @@ if args.do_train:
         print("Processing fold: {}".format(fold_counter))
         data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
         
-        if os.path.exists(data_serialized):
+        if os.path.exists(data_serialized) and not line_args.overwrite:
             print("  FOLD ALREADY TRAINED, moving on")
             fold_counter+=1
             continue
@@ -298,6 +325,8 @@ if args.do_train:
         # The fold is processed        
 
         fold_counter+=1
+        
+        del model, model_to_save
 
     # The training is completed
 
@@ -312,7 +341,7 @@ if args.do_eval:
         data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
         prediction_serialized = "{}{}-Fold-{}-Prediction.pkl".format(model_directory_predictions, model_name, fold_counter)
 
-        if os.path.exists(prediction_serialized):
+        if os.path.exists(prediction_serialized) and not line_args.overwrite:
             print("  FOLD ALREADY TESTED, moving on")
             continue
 

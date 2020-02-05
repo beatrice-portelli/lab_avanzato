@@ -16,6 +16,52 @@ from pytorch_transformers import (
     BertTokenizer
 )
 
+class Args():
+    def __init__(self):
+        self.use_cuda = True
+        self.seed = 42
+        self.output_dir = "./output_seed_42"
+        
+        self.do_train = True
+        self.do_eval = True
+        self.do_results = True
+        self.overwrite_output_dir = False
+        self.overwrite_cache = False
+        self.eval_all_checkpoints = False
+        self.evaluate_on_all = True
+        
+        self.config_name = False
+        self.model_name_or_path = "bert-base-multilingual-uncased"
+        self.tokenizer_name = False
+        self.do_lower_case = True
+        self.task_name = "chapter"
+        self.data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
+        self.small = False
+        self.max_seq_length = 256 # MAX 512 because of BERT constraints
+        self.cached_dataset_dir = "./cached_seed_42"
+        
+        # ideal values:
+        # 1) *_batch_size=16; gradient_accumulation_steps=1
+        # 2) *_batch_size=8; gradient_accumulation_steps=2
+        
+        self.train_batch_size = 16
+        self.eval_batch_size = 16
+        self.gradient_accumulation_steps = 1
+
+        # limits the length of the training
+        # BERT models usually overfit after 4/5 epochs
+        self.max_steps = -1
+        self.num_train_epochs = 4.0
+        self.device = None
+        
+        self.weight_decay = 0.0 # (default)
+        self.learning_rate = 5e-5 # (default)
+        self.adam_epsilon = 1e-8 # (default)
+        self.max_grad_norm = 1.0 # (default)
+        self.warmup_steps = 0 # (default)
+        
+        self.save_steps = 50
+
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -309,45 +355,7 @@ def train(args, train_dataset, model, tokenizer):
 
     return global_step, tr_loss / global_step
 
-class Args():
-    def __init__(self):
-        self.use_cuda = True
-        self.seed = 42
-        self.output_dir = "./output_seed_42"
-        
-        self.do_train = True
-        self.do_eval = True
-        self.do_results = True
-        self.overwrite_output_dir = False
-        self.overwrite_cache = False
-        self.eval_all_checkpoints = False
-        self.evaluate_on_all = True
-        
-        self.config_name = False
-        self.model_name_or_path = "bert-base-multilingual-uncased"
-        self.tokenizer_name = False
-        self.do_lower_case = True
-        self.task_name = "chapter"
-        self.data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
-        self.small = True
-        self.max_seq_length = 256 # MAX 512 because of BERT constraints
-        self.cached_dataset_dir = "./cached_seed_42"
-        
-        self.train_batch_size = 8
-        self.eval_batch_size = 8
-        self.gradient_accumulation_steps = 2
 
-        self.max_steps = -1
-        self.num_train_epochs = 4.0
-        self.device = None
-        
-        self.weight_decay = 0.0 # (default)
-        self.learning_rate = 5e-5 # (default)
-        self.adam_epsilon = 1e-8 # (default)
-        self.max_grad_norm = 1.0 # (default)
-        self.warmup_steps = 0 # (default)
-        
-        self.save_steps = 50
 
 class InputExample(object):
     """A single training/test example for simple sequence classification."""

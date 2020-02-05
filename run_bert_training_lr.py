@@ -337,6 +337,8 @@ if args.do_train:
                 tokenizer.save_pretrained(model_output_dir)
 
                 print("Model serialized at path: {}".format(model_output_dir))
+                
+                del model, model_to_save
 
             if not os.path.exists(data_serialized):
                 with open(data_serialized, "wb") as output_file:
@@ -360,11 +362,13 @@ if args.do_train:
             ml_model.fit(ml_train_data, training_labels)
 
             torch.save(ml_model, model_output_dir+"/logistic_regression.bin")
-            del all_embeddings
+            del all_embeddings, model
                 
         # The fold is processed        
 
         fold_counter+=1
+        
+        
 
     # The training is completed
 
