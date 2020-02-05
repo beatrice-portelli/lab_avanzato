@@ -182,7 +182,7 @@ else:
 
     all_examples = []
     for idx, text in tqdm(enumerate(text_list), desc="Creating examples", total=len(diagnosis_df_annotated)):
-        example = InputExample(guid=idx, text_a=text, label=diagnosis_df_annotated.loc[idx][aggregation_level])
+        example = InputExample(guid=idx, text_a=text, label=diagnosis_df_annotated.iloc[idx][aggregation_level])
         all_examples.append(example)
 
     for i in range(3):
