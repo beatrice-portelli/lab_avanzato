@@ -15,7 +15,8 @@ import glob
 import argparse
 
 from utils import (InputExample, InputFeatures, _truncate_seq_pair, Args,
-                      convert_examples_to_features, load_and_cache_examples, train, evaluate, get_embeddings)
+                      convert_examples_to_features, load_and_cache_examples, train, evaluate,
+                      get_embeddings, get_embeddings_v2)
 
 from pytorch_transformers import (
     WEIGHTS_NAME, BertConfig,
@@ -28,6 +29,7 @@ from pytorch_transformers import (
 parser = argparse.ArgumentParser()
 parser.add_argument("--small", action="store_true", help="test on a smaller dataset")
 parser.add_argument("--n_folds", type=int, default=10, help="number of folds for stratified k fold")
+parser.add_argument("--stop_at", type=int, default=10, help="number of folds to actually compute")
 parser.add_argument("--finetune_bert", action="store_true", help="fine-tune bert for 4 epochs before using it to generate features for the other models")
 parser.add_argument("--train", action="store_true")
 parser.add_argument("--test", action="store_true")
@@ -40,6 +42,9 @@ parser.add_argument("--embedding_lvl", type=str, default="1")
 
 
 line_args = parser.parse_args()
+if line_args.stop_at < line_args.n_folds:
+    print("*****************\n\n\tWARNING:\n\n\tthe code is going to run on {} out of {} folds!\n\n*****************".format(
+    line_args.stop_at, line_args.n_folds))
 
 small = line_args.small
 small_size = 10000
@@ -83,11 +88,11 @@ all_label_codes_path = model_directory+"all_label_codes.pkl"
 label_map_path = model_directory+"label_map.pkl"
 evaluation_path = model_directory+"evaluation_results.pkl"
 
-print(models_path)
-print(model_directory)
-print(model_directory_estimators)
-print(model_directory_training)
-print(model_directory_predictions)
+# print(models_path)
+# print(model_directory)
+# print(model_directory_estimators)
+# print(model_directory_training)
+# print(model_directory_predictions)
 
 with open(original_data_path, "rb") as o:
     input_df = pickle.load(o)
@@ -164,7 +169,8 @@ label_list = input_df[aggregation_level].unique().tolist()
 num_labels = len(label_list)
 
 config_class, model_class, tokenizer_class = BertConfig, BertForSequenceClassification, BertTokenizer
-config = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path, num_labels=num_labels, output_hidden_states = True)
+config_hidden_true = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path, num_labels=num_labels, output_hidden_states = True)
+config_hidden_false = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path, num_labels=num_labels, output_hidden_states = False)
 tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, do_lower_case=args.do_lower_case)
 
 if os.path.exists(all_features_path) and not line_args.overwrite:
@@ -243,15 +249,15 @@ device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else
 args.device = device
 set_seed(args)
 
-model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
+model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
 model.to(device)
 
 print("Current model: {}".format(model_name))
 fold_counter = 1
 
-print(model_directory)
-print(model_directory_estimators)
-print(model_directory_training)
+# print(model_directory)
+# print(model_directory_estimators)
+# print(model_directory_training)
 
 from sklearn.model_selection import StratifiedKFold
 
@@ -266,8 +272,18 @@ sk_fold = StratifiedKFold(n_splits=folds_number)
 if args.do_train:
 
     print("Training")
+    
+    
 
     for training_indexes, test_indexes in sk_fold.split(X=np.zeros(len(codes)), y=codes):
+    
+        model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
+        model.to(device)
+    
+        if fold_counter > line_args.stop_at:
+            print("Stopping before fold: {}".format(fold_counter))
+            break
+    
         print("Processing fold: {}".format(fold_counter))
         data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
         model_output_dir = "{}{}-Fold-{}-Model".format(model_directory_estimators, model_name, fold_counter)
@@ -330,7 +346,10 @@ if args.do_train:
         if os.path.exists(model_output_dir+"/logistic_regression.bin") and not line_args.overwrite:
             print("  LOGISTIC REGRESSION ALREADY TRAINED, moving on")
         else:
-            all_embeddings = get_embeddings(args, model, train_dataset, line_args.embedding_lvl)
+            model = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
+            model.to(device)
+            print(model.config.output_hidden_states)
+            all_embeddings = get_embeddings_v2(args, model, train_dataset, line_args.embedding_lvl)
 
             ml_train_data = np.asarray(all_embeddings.cpu())
 
@@ -341,6 +360,7 @@ if args.do_train:
             ml_model.fit(ml_train_data, training_labels)
 
             torch.save(ml_model, model_output_dir+"/logistic_regression.bin")
+            del all_embeddings
                 
         # The fold is processed        
 
@@ -369,10 +389,10 @@ if args.do_eval:
         if not os.path.exists(data_serialized): break
 
         if line_args.finetune_bert:
-            model = model_class.from_pretrained(model_output_dir)
+            model = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
             tokenizer = tokenizer_class.from_pretrained(model_output_dir, do_lower_case=args.do_lower_case)
         else:
-            model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
+            model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_true)
             tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path, do_lower_case=args.do_lower_case)
 
         model.to(args.device)
@@ -396,7 +416,7 @@ if args.do_eval:
 
         # prediction, all_predictions = evaluate(args, test_dataset, model, tokenizer)
         
-        all_embeddings = get_embeddings(args, model, test_dataset, line_args.embedding_lvl)
+        all_embeddings = get_embeddings_v2(args, model, test_dataset, line_args.embedding_lvl)
 
         ml_test_data = np.asarray(all_embeddings.cpu())
 
@@ -405,6 +425,7 @@ if args.do_eval:
 
         ml_model = torch.load(model_output_dir+"/logistic_regression.bin")
         prediction = ml_model.predict(ml_test_data)
+        del all_embeddings
         
         # print(prediction)
         # print(test_labels)

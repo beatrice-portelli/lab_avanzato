@@ -62,11 +62,11 @@ all_label_codes_path = model_directory+"all_label_codes.pkl"
 label_map_path = model_directory+"label_map.pkl"
 evaluation_path = model_directory+"evaluation_results.pkl"
 
-print(models_path)
-print(model_directory)
-print(model_directory_estimators)
-print(model_directory_training)
-print(model_directory_predictions)
+# print(models_path)
+# print(model_directory)
+# print(model_directory_estimators)
+# print(model_directory_training)
+# print(model_directory_predictions)
 
 with open(original_data_path, "rb") as o:
     input_df = pickle.load(o)
@@ -210,15 +210,14 @@ device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else
 args.device = device
 set_seed(args)
 
-model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
-model.to(device)
+
 
 print("Current model: {}".format(model_name))
 fold_counter = 1
 
-print(model_directory)
-print(model_directory_estimators)
-print(model_directory_training)
+# print(model_directory)
+# print(model_directory_estimators)
+# print(model_directory_training)
 
 from sklearn.model_selection import StratifiedKFold
 
@@ -233,6 +232,9 @@ if args.do_train:
     print("Training")
 
     for training_indexes, test_indexes in sk_fold.split(X=np.zeros(len(codes)), y=codes):
+    
+        model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
+        model.to(device)
     
         if fold_counter > stop_after:
             print("Stopping before fold: {}".format(fold_counter))

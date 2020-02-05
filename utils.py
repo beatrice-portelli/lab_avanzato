@@ -133,6 +133,7 @@ def get_embeddings(args, model, dataset, kind):
 
             outputs = model(**inputs)
             hidden_layers = outputs[2]
+            del outputs
             if kind not in ["mean3", "mean5"]:
                 lvl = int(kind)
                 embeddings = hidden_layers[-lvl]
@@ -156,12 +157,73 @@ def get_embeddings(args, model, dataset, kind):
             
             if all_embeddings is None:
                 all_embeddings = embeddings.detach().cpu()
+                # all_embeddings = embeddings#.detach().cpu()
             else:
                 all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
+                # all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
             #all_embeddings = all_embeddings.detach().cpu()
     
     return all_embeddings
     
+def get_embeddings_v2(args, model, dataset, kind):
+    sampler = SequentialSampler(dataset)
+    dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size)
+    model.eval()
+    
+    all_embeddings = None
+    
+    for batch in tqdm(dataloader, desc="Extracting features from BERT"):
+        batch = tuple(t.to(args.device) for t in batch)
+
+        with torch.no_grad():
+
+
+            inputs = {'input_ids':      batch[0],
+                      'attention_mask': batch[1],
+                      'token_type_ids': batch[2],
+                      'labels':         batch[3] }
+
+            outputs = model(**inputs)
+            hidden_layers = outputs[2]
+            del outputs
+            if kind not in ["mean3", "mean5"]:
+                lvl = int(kind)
+                embeddings = hidden_layers[-lvl][:,0,:]
+                # print(embeddings)
+                # print(type(embeddings))
+                # print(len(embeddings))
+                # print(embeddings.shape)
+                # exit()
+                
+            elif kind == "mean5":
+                embeddings = hidden_layers[-5:]
+                embeddings_sum = embeddings[0][:,0,:]#.detach().cpu()
+                for e in embeddings[1:]:
+                    embeddings_sum += e[:,0,:]#.detach().cpu()
+                embeddings = embeddings_sum / 5.0
+                # print(embeddings)
+                # print(type(embeddings))
+                # print(len(embeddings))
+                # print(embeddings.shape)
+                # exit()
+                
+            elif kind == "mean3":
+                embeddings = hidden_layers[-3:]
+                embeddings_sum = embeddings[0][:,0,:]#.detach().cpu()
+                for e in embeddings[1:]:
+                    embeddings_sum += e[:,0,:]#.detach().cpu()
+                embeddings = embeddings_sum / 3.0
+            
+            embeddings = embeddings.view(embeddings.shape[0], -1) 
+            
+            if all_embeddings is None:
+                # all_embeddings = embeddings.detach().cpu()
+                all_embeddings = embeddings
+            else:
+                # all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
+                all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
+    
+    return all_embeddings
     
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -271,9 +333,9 @@ class Args():
         self.max_seq_length = 256 # MAX 512 because of BERT constraints
         self.cached_dataset_dir = "./cached_seed_42"
         
-        self.train_batch_size = 16
-        self.eval_batch_size = 16
-        self.gradient_accumulation_steps = 1
+        self.train_batch_size = 8
+        self.eval_batch_size = 8
+        self.gradient_accumulation_steps = 2
 
         self.max_steps = -1
         self.num_train_epochs = 4.0
