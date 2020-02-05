@@ -25,8 +25,8 @@ from pytorch_transformers import (
 )
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n_folds", type=int, default=10, help="number of folds for stratified k fold (default 10)")
-parser.add_argument("--stop_at", type=int, default=10, help="number of folds to actually compute (default 10)")
+parser.add_argument("--n_folds", type=int, default=5, help="number of folds for stratified k fold (default 5)")
+parser.add_argument("--stop_at", type=int, default=5, help="number of folds to actually compute (default 5)")
 parser.add_argument("--train", action="store_true", help="perform training")
 parser.add_argument("--test", action="store_true", help="perform testing (requires training data)")
 parser.add_argument("--results", action="store_true", help="compute metrics (requires testing data)")
@@ -69,6 +69,7 @@ diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format
 models_path = main_dir+"/"+line_args.out_dir+"/"
 model_name = args.model_name_or_path + "_small" if small else args.model_name_or_path
 model_directory = "{}{}/{}/".format(models_path, model_name, aggregation_level)
+diagnosis_df_preprocessed_serialized = model_directory+"input_df_dropped{}.pkl".format("_small" if small else "")
 model_directory_estimators = "{}{}/{}/Estimators/".format(models_path, model_name, aggregation_level)
 model_directory_training = "{}{}/{}/Training/".format(models_path, model_name, aggregation_level)
 model_directory_predictions = "{}{}/{}/Predictions/".format(models_path, model_name, aggregation_level)
@@ -300,11 +301,11 @@ if args.do_train:
 
         # Some serialization and things
 
-        data["Fold-{}".format(fold_counter)] = {}
-        data["Fold-{}".format(fold_counter)]["Training-Data"] = training_data
-        data["Fold-{}".format(fold_counter)]["Training-Labels"] = training_labels
-        data["Fold-{}".format(fold_counter)]["Test-Data"] = test_data
-        data["Fold-{}".format(fold_counter)]["Test-Labels"] = test_labels
+        data = {}
+        data["Training-Data"] = training_data
+        data["Training-Labels"] = training_labels
+        data["Test-Data"] = test_data
+        data["Test-Labels"] = test_labels
         model_output_dir = "{}{}-Fold-{}-Model".format(model_directory_estimators, model_name, fold_counter)
 
         if not os.path.exists(model_output_dir):
@@ -317,7 +318,7 @@ if args.do_train:
 
         print("Model serialized at path: {}".format(model_output_dir))
 
-        if not os.path.exists(data_serialized):
+        if not os.path.exists(data_serialized) or line_args.overwrite:
             with open(data_serialized, "wb") as output_file:
                 pickle.dump(data, output_file)
                 print("Training data serialized at path: {}".format(data_serialized))
@@ -351,13 +352,14 @@ if args.do_eval:
         if not os.path.exists(data_serialized): break
 
         model = model_class.from_pretrained(model_output_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
+        tokenizer = tokenizer_class.from_pretrained(model_output_dir, do_lower_case=args.do_lower_case)
         model.to(args.device)
 
         with open(data_serialized, "rb") as input_file:
             training_data = pickle.load(input_file)
-
-        test_data = training_data["Fold-{}".format(fold_counter)]["Test-Data"]
+        
+        print(training_data.keys())
+        test_data = training_data["Test-Data"]
 
         # Actual prediction
 
@@ -389,7 +391,8 @@ def compute_accuracy(real_labels, best_preds, all_preds):
     acc_1 = (real_labels == best_preds).mean()
     acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)])
     acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)])
-    return acc_1, acc_3, acc_5
+    acc_10 = np.mean([1 if r in a[:10] else 0 for (r,a) in zip(real_labels, all_preds)])
+    return acc_1, acc_3, acc_5, acc_10
 
 
 if args.do_results:
@@ -416,13 +419,14 @@ if args.do_results:
         with open(all_predictions_serialized, "rb") as input_file:
             all_predictions = pickle.load(input_file)
         
-        real_labels = data["Fold-{}".format(fold_counter)]["Test-Labels"]
+        real_labels = data["Test-Labels"]
         
-        acc_1, acc_3, acc_5 = compute_accuracy(real_labels, best_prediction, all_predictions)
+        acc_1, acc_3, acc_5, acc_10 = compute_accuracy(real_labels, best_prediction, all_predictions)
         results_df = results_df.append({"Fold": fold_counter,
                            "Accuracy@1": acc_1,
                            "Accuracy@3": acc_3,
-                           "Accuracy@5": acc_5}, ignore_index=True)
+                           "Accuracy@5": acc_5,
+                           "Accuracy@10": acc_10}, ignore_index=True)
 
     results_df.to_pickle(evaluation_path)
     print("Evaluation results saved to path: {}".format(evaluation_path))
