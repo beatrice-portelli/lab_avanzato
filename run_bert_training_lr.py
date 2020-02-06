@@ -13,6 +13,7 @@ import os
 import glob
 
 import argparse
+import gc
 
 from utils import (InputExample, InputFeatures, _truncate_seq_pair, Args,
                       convert_examples_to_features, load_and_cache_examples, train, evaluate,
@@ -34,11 +35,11 @@ parser.add_argument("--finetune_bert", action="store_true", help="fine-tune bert
 parser.add_argument("--train", action="store_true")
 parser.add_argument("--test", action="store_true")
 parser.add_argument("--results", action="store_true")
-parser.add_argument("--cuda", action="store_true")
+parser.add_argument("--nocuda", action="store_true", help="run all code on cpu")
 parser.add_argument("--overwrite", action="store_true")
 parser.add_argument("--out_dir", default="combined_models")
 parser.add_argument("--embedding_lvl", type=str, default="1")
-
+parser.add_argument("--level", default="Chapter", choices=["Chapter", "Block", "Category", "Leaf"], help="choose aggregation level for data (default Chapter)")
 
 
 line_args = parser.parse_args()
@@ -47,7 +48,7 @@ if line_args.stop_at < line_args.n_folds:
     line_args.stop_at, line_args.n_folds))
 
 small = line_args.small
-small_size = 10000
+small_size = 1000
 
 folds_number = line_args.n_folds
 
@@ -55,19 +56,22 @@ args = Args()
 args.do_train = line_args.train
 args.do_eval = line_args.test
 args.do_results = line_args.results
-args.use_cuda = line_args.cuda
-aggregation_level = "Chapter"
+args.use_cuda = not line_args.nocuda
+aggregation_level = line_args.level
+
+# aggregation_level = "Chapter"
 # aggregation_level = "Block"
 
 main_dir = "/mnt/HDD/bportelli/lab_avanzato"
 
 original_data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
 
-diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format("_small" if small else "")
+# diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format("_small" if small else "")
 # models_path = main_dir+"/combined_models/"
 models_path = main_dir+"/"+line_args.out_dir+"/"
 model_name = args.model_name_or_path + "_small" if small else args.model_name_or_path
 model_directory = "{}{}/{}/".format(models_path, model_name, aggregation_level)
+diagnosis_df_preprocessed_serialized = model_directory+"input_df_dropped{}.pkl".format("_small" if small else "")
 model_directory_estimators = "{}{}/{}/Estimators/".format(models_path, model_name, aggregation_level)
 model_directory_training = "{}{}/{}/Training/".format(models_path, model_name, aggregation_level)
 model_directory_predictions = "{}{}/{}/Predictions/".format(models_path, model_name, aggregation_level)
@@ -249,8 +253,32 @@ device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else
 args.device = device
 set_seed(args)
 
-model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
-model.to(device)
+def memReport():
+    for obj in gc.get_objects():
+        if torch.is_tensor(obj):
+            print(type(obj), obj.size())
+
+def print_device_usage(s):
+    # print(torch.cuda.get_device_name(0))
+    # print('Memory Usage:')
+    if s != "":
+        print("-----------------------------------------")
+        print(s)
+    print("-----------------------------------------")
+    print('Allocated:', round(torch.cuda.memory_allocated(0)/1024**3,1), 'GB')
+    print('Cached:   ', round(torch.cuda.memory_cached(0)/1024**3,1), 'GB')
+    print("-----------------------------------------")
+    with open("res.txt", "a") as a:
+        if s!="":
+            a.write("----------------------------\n")
+            a.write(s+"\n")
+        a.write("----------------------------\n")
+        a.write('Allocated:'+ str(round(torch.cuda.memory_allocated(0)/1024**3,1))+ 'GB\n')
+        a.write('Cached:   '+ str(round(torch.cuda.memory_cached(0)/1024**3,1))+ 'GB\n')
+        a.write("----------------------------\n")
+
+# model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
+# model.to(device)
 
 print("Current model: {}".format(model_name))
 fold_counter = 1
@@ -263,7 +291,7 @@ from sklearn.model_selection import StratifiedKFold
 
 codes = all_label_codes
 
-data = {}
+# data = {}
 
 from sklearn.linear_model import LogisticRegression
 
@@ -273,12 +301,17 @@ if args.do_train:
 
     print("Training")
     
-    
+    # memReport()
 
     for training_indexes, test_indexes in sk_fold.split(X=np.zeros(len(codes)), y=codes):
     
-        model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
-        model.to(device)
+        # print_device_usage("")
+        # torch.cuda.empty_cache()
+        # print_device_usage("torch.cuda.empty_cache()")
+        model_false = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
+        model_false.to(device)
+        # print_device_usage("model_false = ...")
+        # memReport()
     
         if fold_counter > line_args.stop_at:
             print("Stopping before fold: {}".format(fold_counter))
@@ -316,31 +349,37 @@ if args.do_train:
             print("  FOLD ALREADY TRAINED, moving on")
         else:
             if line_args.finetune_bert:
-                train(args, train_dataset, model, tokenizer)
+                train(args, train_dataset, model_false, tokenizer)
+                # print_device_usage("")
+                # torch.cuda.empty_cache()
+                # print_device_usage("torch.cuda.empty_cache()")
 
             # Some serialization and things
 
-            data["Fold-{}".format(fold_counter)] = {}
-            data["Fold-{}".format(fold_counter)]["Training-Data"] = training_data
-            data["Fold-{}".format(fold_counter)]["Training-Labels"] = training_labels
-            data["Fold-{}".format(fold_counter)]["Test-Data"] = test_data
-            data["Fold-{}".format(fold_counter)]["Test-Labels"] = test_labels
+            data = {}
+            data["Training-Data"] = training_data
+            data["Training-Labels"] = training_labels
+            data["Test-Data"] = test_data
+            data["Test-Labels"] = test_labels
+            model_output_dir = "{}{}-Fold-{}-Model".format(model_directory_estimators, model_name, fold_counter)
             
 
             if not os.path.exists(model_output_dir):
                 os.makedirs(model_output_dir)
             
             if line_args.finetune_bert:
-                model_to_save = model.module if hasattr(model, 'module') else model
+                model_to_save = model_false.module if hasattr(model_false, 'module') else model_false
                 model_to_save.save_pretrained(model_output_dir)
                 torch.save(args, os.path.join(model_output_dir, 'training_args.bin'))
                 tokenizer.save_pretrained(model_output_dir)
 
                 print("Model serialized at path: {}".format(model_output_dir))
                 
-                del model, model_to_save
+                # print_device_usage("")
+                del model_false, model_to_save
+                # print_device_usage("del model_false, model_to_save")
 
-            if not os.path.exists(data_serialized):
+            if not os.path.exists(data_serialized) or line_args.overwrite:
                 with open(data_serialized, "wb") as output_file:
                     pickle.dump(data, output_file)
                     print("Training data serialized at path: {}".format(data_serialized))
@@ -348,12 +387,13 @@ if args.do_train:
         if os.path.exists(model_output_dir+"/logistic_regression.bin") and not line_args.overwrite:
             print("  LOGISTIC REGRESSION ALREADY TRAINED, moving on")
         else:
-            model = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
-            model.to(device)
-            print(model.config.output_hidden_states)
-            all_embeddings = get_embeddings_v2(args, model, train_dataset, line_args.embedding_lvl)
+            model_true = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
+            model_true.to(device)
+            print(model_true.config.output_hidden_states)
+            all_embeddings = get_embeddings_v2(args, model_true, train_dataset, line_args.embedding_lvl)
 
-            ml_train_data = np.asarray(all_embeddings.cpu())
+            all_embeddings = all_embeddings.cpu()
+            ml_train_data = np.asarray(all_embeddings)
 
             print(ml_train_data.shape)
             print(len(training_labels))
@@ -362,8 +402,13 @@ if args.do_train:
             ml_model.fit(ml_train_data, training_labels)
 
             torch.save(ml_model, model_output_dir+"/logistic_regression.bin")
-            del all_embeddings, model
-                
+            
+            # print_device_usage("")
+            del all_embeddings, model_true, ml_train_data, ml_model
+            # print_device_usage("del all_embeddings, model_true, ml_train_data, ml_model")
+            # torch.cuda.empty_cache()
+            # print_device_usage("torch.cuda.empty_cache()")
+            # memReport()
         # The fold is processed        
 
         fold_counter+=1
@@ -404,8 +449,8 @@ if args.do_eval:
         with open(data_serialized, "rb") as input_file:
             training_data = pickle.load(input_file)
 
-        test_data = training_data["Fold-{}".format(fold_counter)]["Test-Data"]
-        test_labels = training_data["Fold-{}".format(fold_counter)]["Test-Labels"]
+        test_data = training_data["Test-Data"]
+        test_labels = training_data["Test-Labels"]
         
         # Actual prediction
 
@@ -444,11 +489,12 @@ if args.do_eval:
 
     print("{} predictions done.".format(model_name))
 
-def compute_accuracy(real_labels, best_preds, all_preds=None):
+def compute_accuracy(real_labels, best_preds, all_preds):
     acc_1 = (real_labels == best_preds).mean()
-    acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)]) if all_preds is not None else -1
-    acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)]) if all_preds is not None else -1
-    return acc_1, acc_3, acc_5
+    acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)])
+    acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)])
+    acc_10 = np.mean([1 if r in a[:10] else 0 for (r,a) in zip(real_labels, all_preds)])
+    return acc_1, acc_3, acc_5, acc_10
 
 
 if args.do_results:
@@ -478,17 +524,19 @@ if args.do_results:
         else:
             all_predictions = None
         
-        real_labels = data["Fold-{}".format(fold_counter)]["Test-Labels"]
+        real_labels = data["Test-Labels"]
         
-        acc_1, acc_3, acc_5 = compute_accuracy(real_labels, best_prediction, all_predictions)
+        acc_1, acc_3, acc_5, acc_10 = compute_accuracy(real_labels, best_prediction, all_predictions)
         results_df = results_df.append({"Fold": fold_counter,
                            "Accuracy@1": acc_1,
                            "Accuracy@3": acc_3,
-                           "Accuracy@5": acc_5}, ignore_index=True)
+                           "Accuracy@5": acc_5,
+                           "Accuracy@10": acc_10}, ignore_index=True)
 
     results_df.to_pickle(evaluation_path)
     print("Evaluation results saved to path: {}".format(evaluation_path))
     
-results_df = pd.read_pickle(evaluation_path)
-print(results_df)
-print(results_df.mean(axis=0))
+    results_df = pd.read_pickle(evaluation_path)
+    print(results_df)
+    print()
+    print(results_df.mean(axis=0))

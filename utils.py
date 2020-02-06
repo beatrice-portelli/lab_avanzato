@@ -4,7 +4,7 @@ import numpy as np
 import random
 import os
 import glob
-
+import gc
 import torch
 from torch import nn
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
@@ -20,22 +20,22 @@ class Args():
     def __init__(self):
         self.use_cuda = True
         self.seed = 42
-        self.output_dir = "./output_seed_42"
+        # self.output_dir = "./output_seed_42"
         
         self.do_train = True
         self.do_eval = True
         self.do_results = True
-        self.overwrite_output_dir = False
+        # self.overwrite_output_dir = False
         self.overwrite_cache = False
-        self.eval_all_checkpoints = False
-        self.evaluate_on_all = True
+        # self.eval_all_checkpoints = False
+        # self.evaluate_on_all = True
         
         self.config_name = False
         self.model_name_or_path = "bert-base-multilingual-uncased"
         self.tokenizer_name = False
         self.do_lower_case = True
-        self.task_name = "chapter"
-        self.data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
+        # self.task_name = "chapter"
+        # self.data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
         self.small = False
         self.max_seq_length = 256 # MAX 512 because of BERT constraints
         self.cached_dataset_dir = "./cached_seed_42"
@@ -268,8 +268,10 @@ def get_embeddings_v2(args, model, dataset, kind):
             else:
                 # all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
                 all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
-    
-    return all_embeddings
+    all_embeddings_cpu = all_embeddings.cpu()
+    del all_embeddings
+    torch.cuda.empty_cache()
+    return all_embeddings_cpu
     
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -320,6 +322,7 @@ def train(args, train_dataset, model, tokenizer):
             
             outputs = model(**inputs)
             loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
+            del outputs
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -334,26 +337,21 @@ def train(args, train_dataset, model, tokenizer):
                 model.zero_grad()
                 global_step += 1
 
-                """
-                if args.save_steps > 0 and global_step % args.save_steps == 0:
-                    # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, 'checkpoint-{}[loss-{}]'.format(global_step, loss.item()))
-                    if not os.path.exists(output_dir):
-                        os.makedirs(output_dir)
-                    model_to_save = model.module if hasattr(model, 'module') else model  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    torch.save(args, os.path.join(output_dir, 'training_args.bin'))
-                    print("Saving model checkpoint to %s (loss %s)", output_dir, loss.item())
-                """
-
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
-
-    return global_step, tr_loss / global_step
+            
+    del optimizer, scheduler
+    gc.collect()
+    torch.cuda.empty_cache()
+            
+    if global_step == 0:
+        return 1, 1
+    else:
+        return global_step, tr_loss / global_step
 
 
 

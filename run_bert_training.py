@@ -65,7 +65,7 @@ main_dir = "/mnt/HDD/bportelli/lab_avanzato"
 
 original_data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
 
-diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format("_small" if small else "")
+# diagnosis_df_preprocessed_serialized = main_dir+"/input_df_dropped{}.pkl".format("_small" if small else "")
 models_path = main_dir+"/"+line_args.out_dir+"/"
 model_name = args.model_name_or_path + "_small" if small else args.model_name_or_path
 model_directory = "{}{}/{}/".format(models_path, model_name, aggregation_level)
@@ -431,5 +431,7 @@ if args.do_results:
     results_df.to_pickle(evaluation_path)
     print("Evaluation results saved to path: {}".format(evaluation_path))
     
-results_df = pd.read_pickle(evaluation_path)
-print(results_df)
+    results_df = pd.read_pickle(evaluation_path)
+    print(results_df)
+    print()
+    print(results_df.mean(axis=0))
