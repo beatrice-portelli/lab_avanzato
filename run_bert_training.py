@@ -16,7 +16,7 @@ import argparse
 
 
 from utils import (InputExample, InputFeatures, _truncate_seq_pair, Args,
-                      convert_examples_to_features, load_and_cache_examples, train, evaluate)
+                      convert_examples_to_features, load_and_cache_examples, train, evaluate, calculate_all_metrics)
 
 from pytorch_transformers import (
     WEIGHTS_NAME, BertConfig,
@@ -387,51 +387,6 @@ if args.do_eval:
 
     print("{} predictions done.".format(model_name))
 
-def compute_accuracy(real_labels, best_preds, all_preds):
-    acc_1 = (real_labels == best_preds).mean()
-    acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)])
-    acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)])
-    acc_10 = np.mean([1 if r in a[:10] else 0 for (r,a) in zip(real_labels, all_preds)])
-    return acc_1, acc_3, acc_5, acc_10
-
-
 if args.do_results:
 
-    print("Calculating Metrics")
-
-    results_df = pd.DataFrame(columns=["Fold", "Accuracy@1", "Accuracy@3", "Accuracy@5"])
-
-    for fold_counter in range(1, folds_number+1):
-        print("Processing fold: {}".format(fold_counter))
-
-        data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
-        prediction_serialized = "{}{}-Fold-{}-Prediction.pkl".format(model_directory_predictions, model_name, fold_counter)
-        all_predictions_serialized = "{}{}-Fold-{}-All-Predictions.pkl".format(model_directory_predictions, model_name, fold_counter)
-
-        if not os.path.exists(data_serialized): break
-
-        with open(data_serialized, "rb") as input_file:
-            data = pickle.load(input_file)
-            
-        with open(prediction_serialized, "rb") as input_file:
-            best_prediction = pickle.load(input_file)
-            
-        with open(all_predictions_serialized, "rb") as input_file:
-            all_predictions = pickle.load(input_file)
-        
-        real_labels = data["Test-Labels"]
-        
-        acc_1, acc_3, acc_5, acc_10 = compute_accuracy(real_labels, best_prediction, all_predictions)
-        results_df = results_df.append({"Fold": fold_counter,
-                           "Accuracy@1": acc_1,
-                           "Accuracy@3": acc_3,
-                           "Accuracy@5": acc_5,
-                           "Accuracy@10": acc_10}, ignore_index=True)
-
-    results_df.to_pickle(evaluation_path)
-    print("Evaluation results saved to path: {}".format(evaluation_path))
-    
-    results_df = pd.read_pickle(evaluation_path)
-    print(results_df)
-    print()
-    print(results_df.mean(axis=0))
+    calculate_all_metrics(folds_number, model_directory_training, model_name, model_directory_predictions, evaluation_path)

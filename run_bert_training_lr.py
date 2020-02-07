@@ -17,7 +17,8 @@ import gc
 
 from utils import (InputExample, InputFeatures, _truncate_seq_pair, Args,
                       convert_examples_to_features, load_and_cache_examples, train, evaluate,
-                      get_embeddings, get_embeddings_v2)
+                      get_embeddings, get_embeddings_v2,
+                      calculate_all_metrics)
 
 from pytorch_transformers import (
     WEIGHTS_NAME, BertConfig,
@@ -46,6 +47,7 @@ line_args = parser.parse_args()
 if line_args.stop_at < line_args.n_folds:
     print("*****************\n\n\tWARNING:\n\n\tthe code is going to run on {} out of {} folds!\n\n*****************".format(
     line_args.stop_at, line_args.n_folds))
+
 
 small = line_args.small
 small_size = 1000
@@ -253,11 +255,6 @@ device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else
 args.device = device
 set_seed(args)
 
-def memReport():
-    for obj in gc.get_objects():
-        if torch.is_tensor(obj):
-            print(type(obj), obj.size())
-
 def print_device_usage(s):
     # print(torch.cuda.get_device_name(0))
     # print('Memory Usage:')
@@ -277,8 +274,6 @@ def print_device_usage(s):
         a.write('Cached:   '+ str(round(torch.cuda.memory_cached(0)/1024**3,1))+ 'GB\n')
         a.write("----------------------------\n")
 
-# model = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
-# model.to(device)
 
 print("Current model: {}".format(model_name))
 fold_counter = 1
@@ -301,8 +296,6 @@ if args.do_train:
 
     print("Training")
     
-    # memReport()
-
     for training_indexes, test_indexes in sk_fold.split(X=np.zeros(len(codes)), y=codes):
     
         # print_device_usage("")
@@ -311,7 +304,6 @@ if args.do_train:
         model_false = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_false)
         model_false.to(device)
         # print_device_usage("model_false = ...")
-        # memReport()
     
         if fold_counter > line_args.stop_at:
             print("Stopping before fold: {}".format(fold_counter))
@@ -350,9 +342,6 @@ if args.do_train:
         else:
             if line_args.finetune_bert:
                 train(args, train_dataset, model_false, tokenizer)
-                # print_device_usage("")
-                # torch.cuda.empty_cache()
-                # print_device_usage("torch.cuda.empty_cache()")
 
             # Some serialization and things
 
@@ -375,10 +364,9 @@ if args.do_train:
 
                 print("Model serialized at path: {}".format(model_output_dir))
                 
-                # print_device_usage("")
-                del model_false, model_to_save
-                # print_device_usage("del model_false, model_to_save")
-
+                del model_to_save
+            del model_false
+            
             if not os.path.exists(data_serialized) or line_args.overwrite:
                 with open(data_serialized, "wb") as output_file:
                     pickle.dump(data, output_file)
@@ -387,7 +375,10 @@ if args.do_train:
         if os.path.exists(model_output_dir+"/logistic_regression.bin") and not line_args.overwrite:
             print("  LOGISTIC REGRESSION ALREADY TRAINED, moving on")
         else:
-            model_true = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
+            if line_args.finetune_bert:
+                model_true = model_class.from_pretrained(model_output_dir, config=config_hidden_true)
+            else:
+                model_true = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_true)
             model_true.to(device)
             print(model_true.config.output_hidden_states)
             all_embeddings = get_embeddings_v2(args, model_true, train_dataset, line_args.embedding_lvl)
@@ -408,7 +399,6 @@ if args.do_train:
             # print_device_usage("del all_embeddings, model_true, ml_train_data, ml_model")
             # torch.cuda.empty_cache()
             # print_device_usage("torch.cuda.empty_cache()")
-            # memReport()
         # The fold is processed        
 
         fold_counter+=1
@@ -489,54 +479,6 @@ if args.do_eval:
 
     print("{} predictions done.".format(model_name))
 
-def compute_accuracy(real_labels, best_preds, all_preds):
-    acc_1 = (real_labels == best_preds).mean()
-    acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)])
-    acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)])
-    acc_10 = np.mean([1 if r in a[:10] else 0 for (r,a) in zip(real_labels, all_preds)])
-    return acc_1, acc_3, acc_5, acc_10
-
-
 if args.do_results:
 
-    print("Calculating Metrics")
-
-    results_df = pd.DataFrame(columns=["Fold", "Accuracy@1", "Accuracy@3", "Accuracy@5"])
-
-    for fold_counter in range(1, folds_number+1):
-        print("Processing fold: {}".format(fold_counter))
-
-        data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
-        prediction_serialized = "{}{}-Fold-{}-Prediction.pkl".format(model_directory_predictions, model_name, fold_counter)
-        all_predictions_serialized = "{}{}-Fold-{}-All-Predictions.pkl".format(model_directory_predictions, model_name, fold_counter)
-
-        if not os.path.exists(data_serialized): break
-
-        with open(data_serialized, "rb") as input_file:
-            data = pickle.load(input_file)
-            
-        with open(prediction_serialized, "rb") as input_file:
-            best_prediction = pickle.load(input_file)
-            
-        if os.path.exists(all_predictions_serialized):
-            with open(all_predictions_serialized, "rb") as input_file:
-                all_predictions = pickle.load(input_file)
-        else:
-            all_predictions = None
-        
-        real_labels = data["Test-Labels"]
-        
-        acc_1, acc_3, acc_5, acc_10 = compute_accuracy(real_labels, best_prediction, all_predictions)
-        results_df = results_df.append({"Fold": fold_counter,
-                           "Accuracy@1": acc_1,
-                           "Accuracy@3": acc_3,
-                           "Accuracy@5": acc_5,
-                           "Accuracy@10": acc_10}, ignore_index=True)
-
-    results_df.to_pickle(evaluation_path)
-    print("Evaluation results saved to path: {}".format(evaluation_path))
-    
-    results_df = pd.read_pickle(evaluation_path)
-    print(results_df)
-    print()
-    print(results_df.mean(axis=0))
+    calculate_all_metrics(folds_number, model_directory_training, model_name, model_directory_predictions, evaluation_path)

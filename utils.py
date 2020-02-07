@@ -69,24 +69,13 @@ def set_seed(args):
     if torch.cuda.is_available() and args.use_cuda :
         torch.cuda.manual_seed_all(args.seed)
 
-def simple_accuracy(preds, labels):
-    return (preds == labels).mean()
+def compute_accuracy(real_labels, best_preds, all_preds):
+    acc_1 = (real_labels == best_preds).mean()
+    acc_3 = np.mean([1 if r in a[:3] else 0 for (r,a) in zip(real_labels, all_preds)]) if all_preds is not None else -1
+    acc_5 = np.mean([1 if r in a[:5] else 0 for (r,a) in zip(real_labels, all_preds)]) if all_preds is not None else -1
+    acc_10 = np.mean([1 if r in a[:10] else 0 for (r,a) in zip(real_labels, all_preds)]) if all_preds is not None else -1
+    return acc_1, acc_3, acc_5, acc_10
 
-def compute_metrics(task, preds, labels, guids):
-    all_labels_preds = { guid : (real, pred) for (guid,real,pred) in zip(guids,labels,preds) }
-    label_order = get_labels(task)
-    try:
-        confmat = confusion_matrix(labels, preds)
-        simple_acc = simple_accuracy(preds, labels)
-        return {"acc": simple_acc,
-                "confmat": confmat.tolist(),
-                "label_order": label_order,
-                "all_preds": all_labels_preds}
-    except IndexError:
-        simple_acc = simple_accuracy(preds, labels)
-        return {"acc": simple_acc,
-                "label_order": label_order,
-                "all_preds": all_labels_preds}
 
 def evaluate(args, eval_dataset, model, tokenizer, prefix="", kind="dev"):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
@@ -139,26 +128,9 @@ def evaluate(args, eval_dataset, model, tokenizer, prefix="", kind="dev"):
     
     results = (best_preds, all_preds_ranked)
     
-    """
-    result = compute_metrics(eval_task, best_preds, all_preds_ranked, out_label_ids, preds_guids)
-    result["eval_loss"] = eval_loss
-    results.update(result)
-    
-    
-    outdir = 
-    if (prefix == "" or kind != "dev") else args.output_dir+"/checkpoint-"+prefix
-    
-    # add_predictions_to_input(args, preds, outdir, args.data_dir, eval_task)
-    
-    output_eval_file = os.path.join(outdir, "{}_eval_results.txt".format("all" if args.evaluate_on_all else "test"+str(test_size))
-    with open(output_eval_file, "w") as writer:
-        print("***** Eval results {} *****".format(prefix))
-        for key in sorted(result.keys()):
-            print("  %s = %s", key, str(result[key]))
-            writer.write("%s = %s\n" % (key, str(result[key])))
-    """
     return results
     
+# get WORD embeddings from BERT model
 def get_embeddings(args, model, dataset, kind):
     sampler = SequentialSampler(dataset)
     dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size)
@@ -187,30 +159,31 @@ def get_embeddings(args, model, dataset, kind):
                 
             elif kind == "mean5":
                 embeddings = hidden_layers[-5:]
-                embeddings_sum = embeddings[0]#.detach().cpu()
+                embeddings_sum = embeddings[0]
                 for e in embeddings[1:]:
-                    embeddings_sum += e#.detach().cpu()
+                    embeddings_sum += e
                 embeddings = embeddings_sum / 5.0
                 
             elif kind == "mean3":
                 embeddings = hidden_layers[-3:]
-                embeddings_sum = embeddings[0]#.detach().cpu()
+                embeddings_sum = embeddings[0]
                 for e in embeddings[1:]:
-                    embeddings_sum += e#.detach().cpu()
+                    embeddings_sum += e
                 embeddings = embeddings_sum / 3.0
             
             embeddings = embeddings.view(embeddings.shape[0], -1) 
             
             if all_embeddings is None:
-                all_embeddings = embeddings.detach().cpu()
-                # all_embeddings = embeddings#.detach().cpu()
+                all_embeddings = embeddings
             else:
-                all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
-                # all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
-            #all_embeddings = all_embeddings.detach().cpu()
+                all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
+
+    all_embeddings_cpu = all_embeddings.cpu()
+    del all_embeddings
+    # torch.cuda.empty_cache()
+    return all_embeddings_cpu
     
-    return all_embeddings
-    
+# get SENTENCE embeddings from BERT model (from [CLS] token)
 def get_embeddings_v2(args, model, dataset, kind):
     sampler = SequentialSampler(dataset)
     dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size)
@@ -235,42 +208,31 @@ def get_embeddings_v2(args, model, dataset, kind):
             if kind not in ["mean3", "mean5"]:
                 lvl = int(kind)
                 embeddings = hidden_layers[-lvl][:,0,:]
-                # print(embeddings)
-                # print(type(embeddings))
-                # print(len(embeddings))
-                # print(embeddings.shape)
-                # exit()
                 
             elif kind == "mean5":
                 embeddings = hidden_layers[-5:]
-                embeddings_sum = embeddings[0][:,0,:]#.detach().cpu()
+                embeddings_sum = embeddings[0][:,0,:]
                 for e in embeddings[1:]:
-                    embeddings_sum += e[:,0,:]#.detach().cpu()
+                    embeddings_sum += e[:,0,:]
                 embeddings = embeddings_sum / 5.0
-                # print(embeddings)
-                # print(type(embeddings))
-                # print(len(embeddings))
-                # print(embeddings.shape)
-                # exit()
                 
             elif kind == "mean3":
                 embeddings = hidden_layers[-3:]
-                embeddings_sum = embeddings[0][:,0,:]#.detach().cpu()
+                embeddings_sum = embeddings[0][:,0,:]
                 for e in embeddings[1:]:
-                    embeddings_sum += e[:,0,:]#.detach().cpu()
+                    embeddings_sum += e[:,0,:]
                 embeddings = embeddings_sum / 3.0
             
             embeddings = embeddings.view(embeddings.shape[0], -1) 
             
             if all_embeddings is None:
-                # all_embeddings = embeddings.detach().cpu()
                 all_embeddings = embeddings
             else:
-                # all_embeddings = torch.cat( (all_embeddings, embeddings.detach().cpu()), dim=0 )
                 all_embeddings = torch.cat( (all_embeddings, embeddings), dim=0 )
+    
     all_embeddings_cpu = all_embeddings.cpu()
     del all_embeddings
-    torch.cuda.empty_cache()
+    # torch.cuda.empty_cache()
     return all_embeddings_cpu
     
 def train(args, train_dataset, model, tokenizer):
@@ -593,3 +555,46 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, all=False):
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_unique_ids)
     
     return dataset
+
+def calculate_all_metrics(folds_number, model_directory_training, model_name, model_directory_predictions, evaluation_path):
+    print("Calculating Metrics")
+
+    results_df = pd.DataFrame(columns=["Fold", "Accuracy@1", "Accuracy@3", "Accuracy@5"])
+
+    for fold_counter in range(1, folds_number+1):
+        print("Processing fold: {}".format(fold_counter))
+
+        data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
+        prediction_serialized = "{}{}-Fold-{}-Prediction.pkl".format(model_directory_predictions, model_name, fold_counter)
+        all_predictions_serialized = "{}{}-Fold-{}-All-Predictions.pkl".format(model_directory_predictions, model_name, fold_counter)
+
+        if not os.path.exists(data_serialized): break
+
+        with open(data_serialized, "rb") as input_file:
+            data = pickle.load(input_file)
+            
+        with open(prediction_serialized, "rb") as input_file:
+            best_prediction = pickle.load(input_file)
+            
+        if os.path.exists(all_predictions_serialized):
+            with open(all_predictions_serialized, "rb") as input_file:
+                all_predictions = pickle.load(input_file)
+        else:
+            all_predictions = None
+        
+        real_labels = data["Test-Labels"]
+        
+        acc_1, acc_3, acc_5, acc_10 = compute_accuracy(real_labels, best_prediction, all_predictions)
+        results_df = results_df.append({"Fold": fold_counter,
+                           "Accuracy@1": acc_1,
+                           "Accuracy@3": acc_3,
+                           "Accuracy@5": acc_5,
+                           "Accuracy@10": acc_10}, ignore_index=True)
+
+    results_df.to_pickle(evaluation_path)
+    print("Evaluation results saved to path: {}".format(evaluation_path))
+    
+    results_df = pd.read_pickle(evaluation_path)
+    print(results_df)
+    print()
+    print(results_df.mean(axis=0))
