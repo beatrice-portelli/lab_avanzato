@@ -22,30 +22,32 @@ class Args():
     def __init__(self):
         self.use_cuda = True
         self.seed = 42
-        # self.output_dir = "./output_seed_42"
         
         self.do_train = True
         self.do_eval = True
         self.do_results = True
-        # self.overwrite_output_dir = False
         self.overwrite_cache = False
-        # self.eval_all_checkpoints = False
-        # self.evaluate_on_all = True
+
         
         self.config_name = False
+
+        # ----------------------------------------------------
         self.model_name_or_path = "bert-base-multilingual-uncased"
-        self.tokenizer_name = False
         self.do_lower_case = True
-        # self.task_name = "chapter"
-        # self.data_path = "/mnt/HDD/bportelli/lab_avanzato/beatrice.pkl"
+        # self.model_name_or_path = "bert-base-multilingual-cased"
+        # self.do_lower_case = False
+        # ----------------------------------------------------
+
+        self.tokenizer_name = False
         self.small = False
         self.max_seq_length = 256 # MAX 512 because of BERT constraints
         self.cached_dataset_dir = "./cached_seed_42"
         
+        # ----------------------------------------------------
         # ideal values:
         # 1) *_batch_size=16; gradient_accumulation_steps=1
         # 2) *_batch_size=8; gradient_accumulation_steps=2
-        
+        # ----------------------------------------------------
         self.train_batch_size = 16
         self.eval_batch_size = 16
         self.gradient_accumulation_steps = 1
@@ -62,8 +64,6 @@ class Args():
         self.max_grad_norm = 1.0 # (default)
         self.warmup_steps = 0 # (default)
         
-        self.save_steps = 50
-
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -265,8 +265,6 @@ def train(args, train_dataset, model, tokenizer):
     print("  Total train batch size (w. parallel, distributed & accumulation) = %d", args.train_batch_size * args.gradient_accumulation_steps )
     print("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     print("  Total optimization steps = %d", t_total)
-    
-    args.save_steps = 0 # int( len(train_dataset)/ (args.train_batch_size * args.gradient_accumulation_steps) / 2)
 
     global_step = 0
     tr_loss, logging_loss = 0.0, 0.0
