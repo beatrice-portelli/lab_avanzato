@@ -158,7 +158,7 @@ else:
             diagnosis_df_annotated.drop(diagnosis_df_annotated[diagnosis_df_annotated[aggregation_level] == code].index,inplace=True)
     
     if small:
-        diagnosis_df_annotated = diagnosis_df_annotated.iloc[:100,]
+        diagnosis_df_annotated = diagnosis_df_annotated.iloc[:1000,]
     
     print("Length after: {}".format(len(diagnosis_df_annotated)))
 

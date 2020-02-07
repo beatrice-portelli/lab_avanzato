@@ -29,19 +29,19 @@ from pytorch_transformers import (
 # All important paths and constants
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--small", action="store_true", help="test on a smaller dataset")
-parser.add_argument("--n_folds", type=int, default=10, help="number of folds for stratified k fold")
-parser.add_argument("--stop_at", type=int, default=10, help="number of folds to actually compute")
+parser.add_argument("--n_folds", type=int, default=5, help="number of folds for stratified k fold (default 5)")
+parser.add_argument("--stop_at", type=int, default=5, help="number of folds to actually compute (default 5)")
 parser.add_argument("--finetune_bert", action="store_true", help="fine-tune bert for 4 epochs before using it to generate features for the other models")
-parser.add_argument("--train", action="store_true")
-parser.add_argument("--test", action="store_true")
-parser.add_argument("--results", action="store_true")
-parser.add_argument("--nocuda", action="store_true", help="run all code on cpu")
-parser.add_argument("--overwrite", action="store_true")
-parser.add_argument("--out_dir", default="combined_models")
-parser.add_argument("--embedding_lvl", type=str, default="1")
+parser.add_argument("--train", action="store_true", help="perform training")
+parser.add_argument("--test", action="store_true", help="perform testing (requires training data)")
+parser.add_argument("--results", action="store_true", help="compute metrics (requires testing data)")
+parser.add_argument("--nocuda", action="store_true", help="run all code on cpu", help="run all code on cpu")
+parser.add_argument("--overwrite", action="store_true", help="ignore existing data and overwrite everything with no additional warning")
+parser.add_argument("--out_dir", default="combined_models", help="set root directory for all results (default ./combined_models)")
 parser.add_argument("--level", default="Chapter", choices=["Chapter", "Block", "Category", "Leaf"], help="choose aggregation level for data (default Chapter)")
-parser.add_argument("--embedding_kind", default="sent", choices=["word", "sent"], help="choose kind of embeddings: word-level or sentence-level (sentence-level recommended)")
+parser.add_argument("--embedding_lvl", type=str, default="1", choices=["1","2","3","4","5","6","7","8","9","10","11","12","mean3","mean5"], help="which of BERT's hidden layers to use for the embedding representation. 1 is the deepest (final output of the model, more context), 12 is the shallowest (word embeddings without context). mean3 and mean5 are the the mean of layers 1-3 and 1-5.")
+parser.add_argument("--embedding_kind", default="sent", choices=["word", "sent"], help="choose kind of embeddings: word-level or sentence-level (sentence-level recommended) (default sent)")
+parser.add_argument("--small", action="store_true", help="test on a smaller dataset", help="test on a smaller dataset (first 1000 samples)")
 
 def get_embedding_function(kind):
     if kind == "word":
