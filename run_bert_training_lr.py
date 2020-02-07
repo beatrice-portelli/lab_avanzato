@@ -41,7 +41,13 @@ parser.add_argument("--overwrite", action="store_true")
 parser.add_argument("--out_dir", default="combined_models")
 parser.add_argument("--embedding_lvl", type=str, default="1")
 parser.add_argument("--level", default="Chapter", choices=["Chapter", "Block", "Category", "Leaf"], help="choose aggregation level for data (default Chapter)")
+parser.add_argument("--embedding_kind", default="sent", choices=["word", "sent"], help="choose kind of embeddings: word-level or sentence-level (sentence-level recommended)")
 
+def get_embedding_function(kind):
+    if kind == "word":
+        return get_embeddings
+    else:
+        return get_embeddings_v2
 
 line_args = parser.parse_args()
 if line_args.stop_at < line_args.n_folds:
@@ -60,6 +66,7 @@ args.do_eval = line_args.test
 args.do_results = line_args.results
 args.use_cuda = not line_args.nocuda
 aggregation_level = line_args.level
+embedding_function = get_embedding_function(line_args.embedding_kind)
 
 # aggregation_level = "Chapter"
 # aggregation_level = "Block"
@@ -381,7 +388,7 @@ if args.do_train:
                 model_true = model_class.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config_hidden_true)
             model_true.to(device)
             print(model_true.config.output_hidden_states)
-            all_embeddings = get_embeddings_v2(args, model_true, train_dataset, line_args.embedding_lvl)
+            all_embeddings = embedding_function(args, model_true, train_dataset, line_args.embedding_lvl)
 
             all_embeddings = all_embeddings.cpu()
             ml_train_data = np.asarray(all_embeddings)
@@ -455,7 +462,7 @@ if args.do_eval:
 
         # prediction, all_predictions = evaluate(args, test_dataset, model, tokenizer)
         
-        all_embeddings = get_embeddings_v2(args, model, test_dataset, line_args.embedding_lvl)
+        all_embeddings = embedding_function(args, model, test_dataset, line_args.embedding_lvl)
 
         ml_test_data = np.asarray(all_embeddings.cpu())
 
