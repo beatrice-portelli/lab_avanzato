@@ -1,21 +1,28 @@
-# lab_avanzato
 Elenco e descrizione dei file presenti.
-
 
 - bert_training.ipynb
 - lab_bert.ipynb
-
 - run_bert_training.py
 - run_bert_training_lr.py
 - run_bert_training_lr_more_features.py
 - utils.py
 
+# Indice
+- Informazioni generali
+  - utils.py
+- bert_training.ipynb e lab_bert.ipynb
+- run_bert_training.py
+- run_bert_training_lr.py
+- run_bert_training_lr_more_features.py
+- Usage
+  - Parametri generali [IMPORTANTE]
+  - run_bert_training.py
+  - run_bert_training_lr.py
+  - run_bert_training_lr_more_features.py
 ----
 
-# Descrizione
-
-## Informazioni generali
-### utils.py
+# Informazioni generali
+## utils.py
 Per **tutti** i file il modello BERT utilizzato dipende dai parametri settati in `utils.py`, all'interno della classe `Args`.
 
 Il modello attualmente selezionato è `bert-base-multilingual-uncased` (trained on **lower-cased** text in the top 102 languages with the largest Wikipedias). Per usare testo **cased** commentare/decomenntare le righe relative `model_name_or_path` e `do_lower_case`.
@@ -24,13 +31,10 @@ Il numero di epoche di training è fissato a **4** (`num_train_epochs`). Essendo
 
 La batch size è fissata a **16** (`train_batch_size`). Nel caso ci fossero problemi di memoria si consiglia di seguire le indicazioni presenti nei commenti del file (riddure la batch size a 8 e aumentare `gradient_accumulation_steps` per mantenere una batch size virtuale di 16).
 
-### Training
-Il training/testing dei modelli viene effettuato tramite Stratified-KFold. Le metriche vengono restituire per fold e mediate.
-
-## bert_training.ipynb e lab_bert.ipynb
+# bert_training.ipynb e lab_bert.ipynb
 Notebook con celle (anche scollegate tra loro) per visualizzare il dataset, testare la tokenizzazione multilingue di BERT e metodi di estrazione di embedding.
 
-## run_bert_training.py
+# run_bert_training.py
 Usa il modello BERT selezionato per predire una Label in base al testo contenuto nel dataset.
 
 - Input del modello: contenuto colonna "Text" del dataset.
@@ -44,7 +48,7 @@ Gli output sono salvati in `{model_name}/{aggregation_level}/Predictions` nei fi
 
 La corrispondenza label-etichetta è salvata nel dizionario `label_map` in `{model_name}/{aggregation_level}/label_map.pkl`
 
-## run_bert_training_lr.py
+# run_bert_training_lr.py
 Usa il modello BERT selezionato per generare degli embedding da usare come feature per un secondo classificatore (in questo caso Logistic Regression).
 
 Il fine tuning di BERT sul dataset è opzionale (usare `--finetune_bert` per attivarlo). In caso sia scelto viene effettuato come in run_bert_training.py:
@@ -63,7 +67,7 @@ Il training del secondo modello (Logistic Regression) viene effettuato con:
 - Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
 - Output: Label più probabile. Viene calcolata acc (le altre metriche acc@n vengono restituite con valore -1).
 
-## run_bert_training_lr_more_features.py
+# run_bert_training_lr_more_features.py
 Simile a run_bert_training_lr.py.
 
 Usa il modello BERT selezionato per generare degli embedding da usare come feature per un secondo classificatore (in questo caso Logistic Regression). Il secondo classificatore riceve anche feature aggiuntive (sesso, età, ...).
@@ -83,6 +87,18 @@ Il training del secondo modello (Logistic Regression) viene effettuato con:
 ----
 
 # Usage
+
+## Parametri generali [IMPORTANTE]
+Tutti gli script accettano i seguenti parametri (opzionali):
+- `--overwrite`: normalmente gli script eseguono il training dei modelli o calcolano risultati solo se necessario (non ricalcolano feature se sono già presenti salvataggi e non ripetono il training d BERT se non è necessario). In questo modo il training può essere interrotto dopo una fold e poi ripreso senza dover ricalcolare tutto. `--overwrite` forza il ricalcolo di tutti i file senza chiedere ulteriori conferme. **Usare solo se si è sicuri di volerlo fare**.
+- `--n_folds` e `--stop_at`: numero di fold per StratifiedKFold e dopo quante fold interrompere le operazioni (es: dividi i dati secondo 3 fold, ma esegui computazioni solo sulla prima)
+- `--level`: livello di aggregazione (Chapter/Block/...)
+- `--train`, `--test`, `--results`: per eseguire solo la fase di training, testing o computazione delle metriche. Ogni passaggio necessita dei file creati dal precedente. Vengono eseguite **solo** le fasi specificate, quindi è necessario specificarne almeno una.
+- `--small`: per questioni di test, tronca il dataset ai primi 1000 elementi. L'albero delle cartelle creato è completamente separato da quello normale, quindi non interagisce in alcun modo con i file creati senza `--small`
+
+Gli script che comportano estrazione di embedding hanno i seguenti parametri (opzionali):
+- `embedding_kind`: scelta se usare word-embeddings o sentence-embeddings (default sentence, più leggero).
+- `embedding_lvl`: scelta del livello di profondità al quale recuperare gli embedding di BERT. Bert ha 12 livelli hidden, quindi i parametri possibili vanno dall'1 (il più profondo) al 12 (il primo livello), più le due opzioni che permettono di fare una media dei 3/5 livelli più profondi. Il default è la media dei 3 livelli più profondi (1,2,3).
 
 ## run_bert_training.py
 ```
