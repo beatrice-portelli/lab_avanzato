@@ -94,6 +94,7 @@ Tutti gli script accettano i seguenti parametri (opzionali):
 - `--n_folds` e `--stop_at`: numero di fold per StratifiedKFold e dopo quante fold interrompere le operazioni (es: dividi i dati secondo 3 fold, ma esegui computazioni solo sulla prima)
 - `--level`: livello di aggregazione (Chapter/Block/...)
 - `--train`, `--test`, `--results`: per eseguire solo la fase di training, testing o computazione delle metriche. Ogni passaggio necessita dei file creati dal precedente. Vengono eseguite **solo** le fasi specificate, quindi è necessario specificarne almeno una.
+- `--out_dir`: specifica root directory per tutti i file di output. Il parametro di default dei vari script è già impostato per avere directory diverse tra loro.
 - `--small`: per questioni di test, tronca il dataset ai primi 1000 elementi. L'albero delle cartelle creato è completamente separato da quello normale, quindi non interagisce in alcun modo con i file creati senza `--small`
 
 Gli script che comportano estrazione di embedding hanno i seguenti parametri (opzionali):
@@ -149,7 +150,7 @@ optional arguments:
   --overwrite           ignore existing data and overwrite everything with no
                         additional warning
   --out_dir OUT_DIR     set root directory for all results (default
-                        ./combined_models)
+                        ./combined_models_more_features)
   --level {Chapter,Block,Category,Leaf}
                         choose aggregation level for data (default Chapter)
   --embedding_lvl {1,2,3,4,5,6,7,8,9,10,11,12,mean3,mean5}
