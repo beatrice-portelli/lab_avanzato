@@ -1,12 +1,3 @@
-Elenco e descrizione dei file presenti.
-
-- bert_training.ipynb
-- lab_bert.ipynb
-- run_bert_training.py
-- run_bert_training_lr.py
-- run_bert_training_lr_more_features.py
-- utils.py
-
 # Indice
 - Informazioni generali
   - utils.py
@@ -19,6 +10,7 @@ Elenco e descrizione dei file presenti.
   - run_bert_training.py
   - run_bert_training_lr.py
   - run_bert_training_lr_more_features.py
+
 ----
 
 # Informazioni generali
@@ -31,8 +23,12 @@ Il numero di epoche di training è fissato a **4** (`num_train_epochs`). Essendo
 
 La batch size è fissata a **16** (`train_batch_size`). Nel caso ci fossero problemi di memoria si consiglia di seguire le indicazioni presenti nei commenti del file (riddure la batch size a 8 e aumentare `gradient_accumulation_steps` per mantenere una batch size virtuale di 16).
 
+----
+
 # bert_training.ipynb e lab_bert.ipynb
 Notebook con celle (anche scollegate tra loro) per visualizzare il dataset, testare la tokenizzazione multilingue di BERT e metodi di estrazione di embedding.
+
+----
 
 # run_bert_training.py
 Usa il modello BERT selezionato per predire una Label in base al testo contenuto nel dataset.
@@ -47,6 +43,8 @@ Gli output sono salvati in `{model_name}/{aggregation_level}/Predictions` nei fi
 - `{model_name}-Fold-{fold_counter}-All-Predictions.pkl` (lista di tutte le etichette delle label, in ordine di probabilità crescente)
 
 La corrispondenza label-etichetta è salvata nel dizionario `label_map` in `{model_name}/{aggregation_level}/label_map.pkl`
+
+----
 
 # run_bert_training_lr.py
 Usa il modello BERT selezionato per generare degli embedding da usare come feature per un secondo classificatore (in questo caso Logistic Regression).
@@ -66,6 +64,8 @@ Il training del secondo modello (Logistic Regression) viene effettuato con:
 - Input: embedding estratti da BERT.
 - Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
 - Output: Label più probabile. Viene calcolata acc (le altre metriche acc@n vengono restituite con valore -1).
+
+----
 
 # run_bert_training_lr_more_features.py
 Simile a run_bert_training_lr.py.
