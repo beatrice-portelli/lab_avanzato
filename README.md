@@ -20,19 +20,65 @@ Per **tutti** i file il modello BERT utilizzato dipende dai parametri settati in
 
 Il modello attualmente selezionato è `bert-base-multilingual-uncased` (trained on **lower-cased** text in the top 102 languages with the largest Wikipedias). Per usare testo **cased** commentare/decomenntare le righe relative `model_name_or_path` e `do_lower_case`.
 
-Il numero di epoche di training è fissato a **4** (`num_train_epochs`).
+Il numero di epoche di training è fissato a **4** (`num_train_epochs`). Essendo già pre-trained BERT tende ad andare in overfit dopo 4/5 epoche (si sconsiglia di aumentare).
 
 La batch size è fissata a **16** (`train_batch_size`). Nel caso ci fossero problemi di memoria si consiglia di seguire le indicazioni presenti nei commenti del file (riddure la batch size a 8 e aumentare `gradient_accumulation_steps` per mantenere una batch size virtuale di 16).
+
+### Training
+Il training/testing dei modelli viene effettuato tramite Stratified-KFold. Le metriche vengono restituire per fold e mediate.
 
 ## bert_training.ipynb e lab_bert.ipynb
 Notebook con celle (anche scollegate tra loro) per visualizzare il dataset, testare la tokenizzazione multilingue di BERT e metodi di estrazione di embedding.
 
 ## run_bert_training.py
+Usa il modello BERT selezionato per predire una Label in base al testo contenuto nel dataset.
+
+- Input del modello: contenuto colonna "Text" del dataset.
+- Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
+- Output: dato un sample restituisce per ogni possibile valore della Label la probabilità che il sample abbia tale Label. Vengono quindi calcolate le metriche acc, acc@3, acc@5, acc@10.
+
+Gli output sono salvati in `{model_name}/{aggregation_level}/Predictions` nei file:
+
+- `{model_name}-Fold-{fold_counter}-Prediction.pkl` (etichetta della label più probabile)
+- `{model_name}-Fold-{fold_counter}-All-Predictions.pkl` (lista di tutte le etichette delle label, in ordine di probabilità crescente)
+
+La corrispondenza label-etichetta è salvata nel dizionario `label_map` in `{model_name}/{aggregation_level}/label_map.pkl`
 
 ## run_bert_training_lr.py
+Usa il modello BERT selezionato per generare degli embedding da usare come feature per un secondo classificatore (in questo caso Logistic Regression).
+
+Il fine tuning di BERT sul dataset è opzionale (usare `--finetune_bert` per attivarlo). In caso sia scelto viene effettuato come in run_bert_training.py:
+- Input di BERT: contenuto colonna "Text" del dataset.
+- Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
+- Output: dato un sample restituisce per ogni possibile valore della Label la probabilità che il sample abbia tale Label.
+
+Gli embedding possono essere estratti a livello di word o sentence (vedi `--embedding_kind`). Ogni word/sentence-embedding ha dimensione 768 (dimensione degli hidden layer del modello), quindi scegliendo i word embedding si ottengono 768*n_words feature. Si è scelto di ricavare i sentence-embedding dalla rappresentazione del primo token dato in input a BERT (token speciale [CLS], usato in fase di training come indicatore per la classificazione della Label).
+
+_(idea alternativa non implementata: sentence-embedding come media dei word-embedding della frase)_
+
+Gli embedding sono basati sugli hidden layer di BERT e si può quindi cambiare la profondità del livello di embedding (vedi `--embedding_lvl`). Il livello 1 è il più profondo (output finale del modello) e quindi contiene più informazioni contestuali. Il livello 12 è il meno profondo (nessuna informazioni contestuale). Il default è una media dei 3 livelli più profondi.
+
+Il training del secondo modello (Logistic Regression) viene effettuato con:
+- Input: embedding estratti da BERT.
+- Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
+- Output: Label più probabile. Viene calcolata acc (le altre metriche acc@n vengono restituite con valore -1).
 
 ## run_bert_training_lr_more_features.py
+Simile a run_bert_training_lr.py.
 
+Usa il modello BERT selezionato per generare degli embedding da usare come feature per un secondo classificatore (in questo caso Logistic Regression). Il secondo classificatore riceve anche feature aggiuntive (sesso, età, ...).
+
+Il fine tuning di BERT sul dataset è opzionale (vedi run_bert_training_lr.py).
+
+Gli embedding vengono ricavati come in run_bert_training_lr.py.
+
+Il training del secondo modello (Logistic Regression) viene effettuato con:
+- Input: concatenazione di:
+  - valori della colonna "Età" del dataset (normalizzati con MinMaxScaler in intervallo 0-1)
+  - valori della colonna "Sesso" del dataset ("M"/"F", codificati poi con OneHotEncoder in modalità automatica)
+  - embedding estratti da BERT
+- Label: contenuto della colonna "Leaf"/"Category"/"Block"/"Chapter".
+- Output: Label più probabile. Viene calcolata acc (le altre metriche acc@n vengono restituite con valore -1).
 
 ----
 
@@ -91,7 +137,7 @@ optional arguments:
   --level {Chapter,Block,Category,Leaf}
                         choose aggregation level for data (default Chapter)
   --embedding_lvl {1,2,3,4,5,6,7,8,9,10,11,12,mean3,mean5}
-                        which of BERT's hidden layers to use for the embedding
+                        (default mean3) which of BERT's hidden layers to use for the embedding
                         representation. 1 is the deepest (final output of the
                         model, more context), 12 is the shallowest (word
                         embeddings without context). mean3 and mean5 are the
@@ -131,7 +177,7 @@ optional arguments:
   --level {Chapter,Block,Category,Leaf}
                         choose aggregation level for data (default Chapter)
   --embedding_lvl {1,2,3,4,5,6,7,8,9,10,11,12,mean3,mean5}
-                        which of BERT's hidden layers to use for the embedding
+                        (default mean3)  which of BERT's hidden layers to use for the embedding
                         representation. 1 is the deepest (final output of the
                         model, more context), 12 is the shallowest (word
                         embeddings without context). mean3 and mean5 are the
