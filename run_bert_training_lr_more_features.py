@@ -107,8 +107,9 @@ evaluation_path = model_directory+"evaluation_results.pkl"
 # print(model_directory_training)
 # print(model_directory_predictions)
 
-with open(original_data_path, "rb") as o:
-    input_df = pickle.load(o)
+# with open(original_data_path, "rb") as o:
+    # input_df = pickle.load(o)
+input_df = pd.read_pickle(original_data_path)
 
 print("Original dataframe")
 input_df.head()
