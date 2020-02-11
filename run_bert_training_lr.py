@@ -28,6 +28,8 @@ from pytorch_transformers import (
 
 # All important paths and constants
 
+PREDICT_ALL_LABELS = True
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_folds", type=int, default=5, help="number of folds for stratified k fold (default 5)")
 parser.add_argument("--stop_at", type=int, default=5, help="number of folds to actually compute (default 5)")
@@ -56,7 +58,7 @@ if line_args.stop_at < line_args.n_folds:
 
 
 small = line_args.small
-small_size = 1000
+small_size = 50
 
 folds_number = line_args.n_folds
 
@@ -426,12 +428,12 @@ if args.do_eval:
         model_output_dir = "{}{}-Fold-{}-Model".format(model_directory_estimators, model_name, fold_counter)
         data_serialized = "{}{}-Fold-{}-Data.pkl".format(model_directory_training, model_name, fold_counter)
         prediction_serialized = "{}{}-Fold-{}-Prediction.pkl".format(model_directory_predictions, model_name, fold_counter)
+        all_predictions_serialized = "{}{}-Fold-{}-All-Predictions.pkl".format(model_directory_predictions, model_name, fold_counter)
 
         if os.path.exists(prediction_serialized) and not line_args.overwrite:
             print("  FOLD ALREADY TESTED, moving on")
             continue
 
-        # all_predictions_serialized = "{}{}-Fold-{}-All-Predictions.pkl".format(model_directory_predictions, model_name, fold_counter)
 
         if not os.path.exists(data_serialized): break
 
@@ -471,17 +473,40 @@ if args.do_eval:
         # print(len(test_labels))
 
         ml_model = torch.load(model_output_dir+"/logistic_regression.bin")
-        prediction = ml_model.predict(ml_test_data)
-        del all_embeddings
+        model_classes = ml_model.classes_
         
-        # print(prediction)
-        # print(test_labels)
-
+        if not PREDICT_ALL_LABELS:
+            prediction = ml_model.predict(ml_test_data)
+            
+            with open(prediction_serialized, "wb") as output_file:
+                pickle.dump(prediction, output_file)
+                print("Prediction serialized at path: {}".format(prediction_serialized))
+        
+        else:
+            all_predictions = ml_model.predict_proba(ml_test_data)
+            best_preds = np.argmax(all_predictions, axis=1)
+            best_preds = [model_classes[p] for p in best_preds]
+            # print(best_preds)
+            all_preds_ranked = np.argsort(-all_predictions, axis=1)
+            substitute = lambda p: model_classes[p]
+            v_substitute = np.vectorize(substitute)
+            all_preds_ranked = v_substitute(all_preds_ranked)
+            prediction = all_preds_ranked[:,0]
+            # print(prediction)
+            # print(all_preds_ranked)
+            
+            with open(prediction_serialized, "wb") as output_file:
+                pickle.dump(prediction, output_file)
+                print("Prediction serialized at path: {}".format(prediction_serialized))
+            with open(all_predictions_serialized, "wb") as output_file:
+                pickle.dump(all_preds_ranked, output_file)
+                print("All-Predictions serialized at path: {}".format(prediction_serialized))
+        
+        del all_embeddings
         # Some serialization and things
 
-        with open(prediction_serialized, "wb") as output_file:
-            pickle.dump(prediction, output_file)
-            print("Prediction serialized at path: {}".format(prediction_serialized))
+        
+        
         
     # The predictions are completed
 
